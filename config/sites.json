@@ -1,0 +1,101 @@
+{
+  "sites": {
+    "toysreloved": {
+      "display_name": "toysreloved.de",
+      "role": "self",
+      "category_map": {
+        "Action Figures": "Action Figures & Collectibles",
+        "Figuren": "Action Figures & Collectibles",
+        "Collectibles": "Action Figures & Collectibles",
+        "Dolls": "Dolls & Soft Toys",
+        "Puppen": "Dolls & Soft Toys",
+        "Kuscheltiere": "Dolls & Soft Toys",
+        "Plush": "Dolls & Soft Toys",
+        "LEGO": "LEGO & Building Sets",
+        "Building Sets": "LEGO & Building Sets",
+        "Bausteine": "LEGO & Building Sets",
+        "Puzzles": "Puzzles & Board Games",
+        "Board Games": "Puzzles & Board Games",
+        "Gesellschaftsspiele": "Puzzles & Board Games",
+        "Lernspielzeug": "Educational & Learning",
+        "Educational": "Educational & Learning",
+        "Modellautos": "Vehicles, RC & Models",
+        "RC": "Vehicles, RC & Models",
+        "Vehicles": "Vehicles, RC & Models",
+        "Arts and Crafts": "Arts & Crafts",
+        "Basteln": "Arts & Crafts",
+        "Baby": "Baby & Toddler Toys",
+        "Kleinkind": "Baby & Toddler Toys",
+        "Outdoor": "Outdoor & Sports Toys",
+        "Sport": "Outdoor & Sports Toys",
+        "Electronic": "Electronic & Tech Toys",
+        "Elektronik": "Electronic & Tech Toys",
+        "Verkleiden": "Role Play & Dress-Up",
+        "Dress-Up": "Role Play & Dress-Up"
+      }
+    },
+    "stuffle": {
+      "display_name": "stuffle.com",
+      "role": "competitor",
+      "category_map": {
+        "Figuren": "Action Figures & Collectibles",
+        "Puppen": "Dolls & Soft Toys",
+        "Kuscheltiere": "Dolls & Soft Toys",
+        "LEGO": "LEGO & Building Sets",
+        "Puzzles": "Puzzles & Board Games",
+        "Spiele": "Puzzles & Board Games",
+        "Lernspielzeug": "Educational & Learning",
+        "Modellautos": "Vehicles, RC & Models",
+        "Ferngesteuert": "Vehicles, RC & Models",
+        "Basteln": "Arts & Crafts",
+        "Baby": "Baby & Toddler Toys",
+        "Outdoor": "Outdoor & Sports Toys",
+        "Elektronik": "Electronic & Tech Toys",
+        "Verkleiden": "Role Play & Dress-Up"
+      }
+    },
+    "sellpy": {
+      "display_name": "sellpy.com",
+      "role": "competitor",
+      "category_map": {
+        "Figurer": "Action Figures & Collectibles",
+        "Dockor": "Dolls & Soft Toys",
+        "Gosedjur": "Dolls & Soft Toys",
+        "LEGO": "LEGO & Building Sets",
+        "Byggleksaker": "LEGO & Building Sets",
+        "Pussel": "Puzzles & Board Games",
+        "Sällskapsspel": "Puzzles & Board Games",
+        "Lärande": "Educational & Learning",
+        "Fordon": "Vehicles, RC & Models",
+        "Radiostyrt": "Vehicles, RC & Models",
+        "Pyssel": "Arts & Crafts",
+        "Baby": "Baby & Toddler Toys",
+        "Småbarn": "Baby & Toddler Toys",
+        "Utomhus": "Outdoor & Sports Toys",
+        "Sport": "Outdoor & Sports Toys",
+        "Elektroniska leksaker": "Electronic & Tech Toys",
+        "Utklädnad": "Role Play & Dress-Up"
+      }
+    },
+    "tildi": {
+      "display_name": "tildi.com",
+      "role": "competitor",
+      "category_map": {
+        "Figuren": "Action Figures & Collectibles",
+        "Puppen": "Dolls & Soft Toys",
+        "Plüsch": "Dolls & Soft Toys",
+        "LEGO": "LEGO & Building Sets",
+        "Bauen": "LEGO & Building Sets",
+        "Puzzle": "Puzzles & Board Games",
+        "Brettspiele": "Puzzles & Board Games",
+        "Lernen": "Educational & Learning",
+        "Fahrzeuge": "Vehicles, RC & Models",
+        "Basteln": "Arts & Crafts",
+        "Baby": "Baby & Toddler Toys",
+        "Draußen": "Outdoor & Sports Toys",
+        "Elektronisch": "Electronic & Tech Toys",
+        "Rollenspiel": "Role Play & Dress-Up"
+      }
+    }
+  }
+}

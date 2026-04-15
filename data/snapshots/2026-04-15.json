@@ -1,0 +1,57 @@
+{
+  "date": "2026-04-15",
+  "sites": {
+    "toysreloved": {
+      "site": "toysreloved",
+      "fetched_at": "2026-04-15T21:13:21+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403 on https://toysreloved.de/products.json?limit=250&page=1",
+      "raw_cache_path": null
+    },
+    "stuffle": {
+      "site": "stuffle",
+      "fetched_at": "2026-04-15T21:13:53+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403 on https://stuffle.com/search?category=toys",
+      "raw_cache_path": null
+    },
+    "sellpy": {
+      "site": "sellpy",
+      "fetched_at": "2026-04-15T21:14:23+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403 on https://www.sellpy.com/c/kids/toys",
+      "raw_cache_path": null
+    },
+    "tildi": {
+      "site": "tildi",
+      "fetched_at": "2026-04-15T21:14:55+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403 on https://tildi.com/de/kategorie/spielzeug",
+      "raw_cache_path": null
+    }
+  }
+}

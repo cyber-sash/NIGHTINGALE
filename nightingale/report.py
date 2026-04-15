@@ -1,0 +1,183 @@
+"""Markdown report generator.
+
+Produces reports/YYYY-MM-DD.md comparing the four sites side-by-side,
+with day-over-day deltas when a previous snapshot is available.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .taxonomy import CANONICAL_CATEGORIES
+
+SITES_ORDER = ("toysreloved", "stuffle", "sellpy", "tildi")
+SITE_LABELS = {
+    "toysreloved": "toysreloved.de (us)",
+    "stuffle": "stuffle.com",
+    "sellpy": "sellpy.com",
+    "tildi": "tildi.com",
+}
+
+
+def _fmt_int(n: int | None) -> str:
+    return f"{n:,}".replace(",", "\u202f") if isinstance(n, int) else "—"
+
+
+def _delta(curr: int | None, prev: int | None) -> str:
+    if not isinstance(curr, int) or not isinstance(prev, int):
+        return ""
+    diff = curr - prev
+    if diff == 0:
+        return " (±0)"
+    sign = "+" if diff > 0 else "−"
+    pct = (diff / prev * 100.0) if prev else 0.0
+    return f" ({sign}{abs(diff):,}".replace(",", "\u202f") + f", {pct:+.1f}%)"
+
+
+def _status_badge(status: str) -> str:
+    return {
+        "ok": "OK",
+        "blocked": "BLOCKED",
+        "error": "ERROR",
+    }.get(status, status.upper())
+
+
+def render(
+    date: str,
+    snapshot: dict[str, Any],
+    previous: dict[str, Any] | None,
+) -> str:
+    sites = snapshot.get("sites", {})
+    prev_sites = (previous or {}).get("sites", {})
+
+    lines: list[str] = []
+    lines.append(f"# Competitor Toy-Inventory Snapshot — {date}")
+    lines.append("")
+    lines.append(
+        "Daily side-by-side of our toy inventory at **toysreloved.de** vs. "
+        "the three peers: **stuffle.com**, **sellpy.com**, **tildi.com**."
+    )
+    lines.append("")
+
+    # ---- Run status ----
+    lines.append("## Run status")
+    lines.append("")
+    lines.append("| Site | Status | Fetched at | Notes |")
+    lines.append("|---|---|---|---|")
+    for key in SITES_ORDER:
+        rec = sites.get(key, {})
+        status = rec.get("status", "—")
+        fetched = rec.get("fetched_at", "—")
+        note = rec.get("error") or ""
+        lines.append(
+            f"| {SITE_LABELS[key]} | {_status_badge(status)} | {fetched} | {note} |"
+        )
+    lines.append("")
+
+    # ---- Headline totals ----
+    lines.append("## Total toy listings")
+    lines.append("")
+    lines.append("| Site | Today | Δ vs. previous |")
+    lines.append("|---|---:|---|")
+    for key in SITES_ORDER:
+        curr = sites.get(key, {}).get("total_listings")
+        prev = prev_sites.get(key, {}).get("total_listings")
+        lines.append(
+            f"| {SITE_LABELS[key]} | {_fmt_int(curr)} |{_delta(curr, prev) or ' —'} |"
+        )
+    lines.append("")
+
+    # ---- Category comparison ----
+    lines.append("## Canonical-category breakdown")
+    lines.append("")
+    header = "| Category | " + " | ".join(SITE_LABELS[k] for k in SITES_ORDER) + " |"
+    sep = "|---|" + "|".join(["---:"] * len(SITES_ORDER)) + "|"
+    lines.append(header)
+    lines.append(sep)
+    for cat in CANONICAL_CATEGORIES:
+        row = [cat]
+        for key in SITES_ORDER:
+            n = sites.get(key, {}).get("categories", {}).get(cat)
+            row.append(_fmt_int(n))
+        lines.append("| " + " | ".join(row) + " |")
+    lines.append("")
+
+    # ---- Our-site detail ----
+    us = sites.get("toysreloved", {})
+    if us.get("status") == "ok":
+        lines.append("## toysreloved.de detail")
+        lines.append("")
+        brands = us.get("brands_top10") or []
+        if brands:
+            lines.append("**Top brands**")
+            lines.append("")
+            lines.append("| # | Brand | Listings |")
+            lines.append("|---:|---|---:|")
+            for i, b in enumerate(brands, 1):
+                lines.append(f"| {i} | {b['name']} | {_fmt_int(b.get('count'))} |")
+            lines.append("")
+
+        buckets = us.get("price_buckets_eur") or {}
+        if buckets:
+            lines.append("**Price distribution (EUR)**")
+            lines.append("")
+            lines.append("| Bucket | Variants |")
+            lines.append("|---|---:|")
+            for b in ("0-10", "10-25", "25-50", "50-100", "100+"):
+                lines.append(f"| €{b} | {_fmt_int(buckets.get(b, 0))} |")
+            lines.append("")
+
+        conditions = us.get("conditions") or {}
+        if conditions:
+            lines.append("**Condition mix**")
+            lines.append("")
+            lines.append("| Condition | Listings |")
+            lines.append("|---|---:|")
+            for c in ("new", "like_new", "good", "acceptable"):
+                if c in conditions:
+                    lines.append(f"| {c.replace('_', ' ')} | {_fmt_int(conditions[c])} |")
+            lines.append("")
+
+    # ---- Signal section ----
+    lines.append("## Signals & what to watch")
+    lines.append("")
+    lines.append(_signals(sites, prev_sites))
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append(
+        "Generated by `python -m nightingale.cli`. Config lives in "
+        "`config/sites.json`; raw HTML per day is cached under "
+        "`data/raw/<site>/<date>/`."
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _signals(sites: dict[str, Any], prev_sites: dict[str, Any]) -> str:
+    notes: list[str] = []
+    for key in SITES_ORDER:
+        rec = sites.get(key, {})
+        prev = prev_sites.get(key, {})
+        status = rec.get("status")
+        if status != "ok":
+            notes.append(
+                f"- **{SITE_LABELS[key]}**: snapshot not usable today "
+                f"({_status_badge(status or '—')}). Investigate before next run."
+            )
+            continue
+        curr = rec.get("total_listings")
+        old = prev.get("total_listings")
+        if isinstance(curr, int) and isinstance(old, int) and old > 0:
+            pct = (curr - old) / old * 100.0
+            if abs(pct) >= 5.0:
+                direction = "grew" if pct > 0 else "shrank"
+                notes.append(
+                    f"- **{SITE_LABELS[key]}** toy inventory {direction} "
+                    f"{abs(pct):.1f}% day-over-day ({_fmt_int(old)} → "
+                    f"{_fmt_int(curr)}). Worth a manual look."
+                )
+    if not notes:
+        notes.append(
+            "- No significant movements (>5%) versus the previous snapshot."
+        )
+    return "\n".join(notes)

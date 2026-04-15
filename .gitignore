@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+
+# Cached raw HTML per day. Useful locally for re-parsing when selectors
+# change, but too large and too noisy to track in git. Snapshot JSON and
+# rendered reports under data/snapshots/ and reports/ ARE committed.
+data/raw/
