@@ -8,11 +8,18 @@ or `python -m unittest tests.test_harness`.
 from __future__ import annotations
 
 import json
+import os
 import unittest
+from unittest.mock import patch
 
-from nightingale.collect import ToysRelovedCollector
-from nightingale.report import render
-from nightingale.taxonomy import CANONICAL_CATEGORIES, normalize_category
+os.environ.setdefault("NIGHTINGALE_JITTER", "0")
+
+from nightingale.collect import (  # noqa: E402 — env flag set first
+    StuffleCollector,
+    ToysRelovedCollector,
+)
+from nightingale.report import render  # noqa: E402
+from nightingale.taxonomy import CANONICAL_CATEGORIES, normalize_category  # noqa: E402
 
 
 class TaxonomyTests(unittest.TestCase):
@@ -32,6 +39,60 @@ class TaxonomyTests(unittest.TestCase):
             normalize_category("quantum plushie", {"Puppen": "Dolls & Soft Toys"}),
             "Other / Uncategorized",
         )
+
+
+class ConfigDrivenUrlTests(unittest.TestCase):
+    def test_site_config_overrides_default_urls(self) -> None:
+        collector = StuffleCollector(
+            site_config={
+                "toys_url": "https://stuffle.com/override",
+                "fallback_urls": ["https://stuffle.com/fallback"],
+                "category_map": {},
+            },
+            cache_dir=None,
+        )
+        self.assertEqual(collector.toys_url, "https://stuffle.com/override")
+        self.assertEqual(collector.fallback_urls, ["https://stuffle.com/fallback"])
+
+    def test_defaults_apply_when_config_omits_urls(self) -> None:
+        collector = StuffleCollector(site_config={}, cache_dir=None)
+        self.assertTrue(collector.toys_url.startswith("https://stuffle.com/"))
+        self.assertTrue(len(collector.fallback_urls) >= 1)
+
+
+class FallbackUrlRotationTests(unittest.TestCase):
+    def test_first_working_url_wins(self) -> None:
+        collector = StuffleCollector(
+            site_config={
+                "toys_url": "https://primary.invalid/",
+                "fallback_urls": [
+                    "https://secondary.invalid/",
+                    "https://tertiary.invalid/",
+                ],
+                "category_map": {},
+            },
+            cache_dir=None,
+        )
+        calls: list[str] = []
+
+        def fake_fetch(url: str) -> str:
+            calls.append(url)
+            if url == "https://secondary.invalid/":
+                return "<html>123 Artikel</html>"
+            raise urllib_error_http(403, url)
+
+        with patch.object(collector, "_fetch", side_effect=fake_fetch):
+            body, winner = collector._fetch_first_working(
+                [collector.toys_url, *collector.fallback_urls]
+            )
+        self.assertEqual(winner, "https://secondary.invalid/")
+        self.assertEqual(len(calls), 2)  # primary failed, secondary won
+
+
+def urllib_error_http(code: int, url: str):
+    import urllib.error
+
+    return urllib.error.HTTPError(url, code, "blocked", {}, None)
 
 
 class ProductsJsonParseTests(unittest.TestCase):
@@ -70,6 +131,53 @@ class ProductsJsonParseTests(unittest.TestCase):
         self.assertIn("Playmobil", brand_names)
         self.assertEqual(parsed["price_buckets_eur"]["25-50"], 1)
         self.assertEqual(parsed["price_buckets_eur"]["0-10"], 1)
+
+
+class ShopifyPaginationTests(unittest.TestCase):
+    def test_paginates_until_short_page(self) -> None:
+        collector = ToysRelovedCollector(
+            site_config={
+                "toys_url": "https://toysreloved.de/products.json?limit=250&page=1",
+                "category_map": {"LEGO": "LEGO & Building Sets"},
+            },
+            cache_dir=None,
+        )
+
+        def product(i: int) -> dict:
+            return {
+                "id": i,
+                "title": f"Toy {i}",
+                "handle": f"toy-{i}",
+                "product_type": "LEGO",
+                "vendor": "LEGO",
+                "tags": "good",
+                "variants": [{"price": "12.00"}],
+            }
+
+        # page 1: 250 items (full), page 2: 7 items (short ⇒ stop)
+        pages = {
+            1: json.dumps({"products": [product(i) for i in range(250)]}),
+            2: json.dumps({"products": [product(i) for i in range(250, 257)]}),
+        }
+        captured: list[str] = []
+
+        def fake_fetch(url: str) -> str:
+            captured.append(url)
+            page = 1
+            if "page=2" in url:
+                page = 2
+            return pages[page]
+
+        with patch.object(collector, "_fetch", side_effect=fake_fetch):
+            record = collector.collect("2026-04-15")
+
+        self.assertEqual(record.status, "ok")
+        self.assertEqual(record.total_listings, 257)
+        self.assertEqual(len(captured), 2)  # stopped at short page
+        # Aggregated brand counts
+        lego = next((b for b in record.brands_top10 if b["name"] == "LEGO"), None)
+        self.assertIsNotNone(lego)
+        self.assertEqual(lego["count"], 257)
 
 
 class ReportRenderTests(unittest.TestCase):

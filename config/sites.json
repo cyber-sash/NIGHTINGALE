@@ -3,6 +3,12 @@
     "toysreloved": {
       "display_name": "toysreloved.de",
       "role": "self",
+      "toys_url": "https://toysreloved.de/products.json?limit=250&page=1",
+      "fallback_urls": [
+        "https://toysreloved.de/sitemap_products_1.xml",
+        "https://toysreloved.de/product-sitemap.xml",
+        "https://toysreloved.de/sitemap.xml"
+      ],
       "category_map": {
         "Action Figures": "Action Figures & Collectibles",
         "Figuren": "Action Figures & Collectibles",
@@ -37,6 +43,11 @@
     "stuffle": {
       "display_name": "stuffle.com",
       "role": "competitor",
+      "toys_url": "https://stuffle.com/search?category=toys",
+      "fallback_urls": [
+        "https://stuffle.com/c/spielzeug",
+        "https://stuffle.com/sitemap.xml"
+      ],
       "category_map": {
         "Figuren": "Action Figures & Collectibles",
         "Puppen": "Dolls & Soft Toys",
@@ -57,6 +68,11 @@
     "sellpy": {
       "display_name": "sellpy.com",
       "role": "competitor",
+      "toys_url": "https://www.sellpy.com/c/kids/toys",
+      "fallback_urls": [
+        "https://www.sellpy.com/api/v2/search?categoryId=toys&pageSize=0",
+        "https://www.sellpy.com/c/barn/leksaker"
+      ],
       "category_map": {
         "Figurer": "Action Figures & Collectibles",
         "Dockor": "Dolls & Soft Toys",
@@ -80,6 +96,11 @@
     "tildi": {
       "display_name": "tildi.com",
       "role": "competitor",
+      "toys_url": "https://tildi.com/de/kategorie/spielzeug",
+      "fallback_urls": [
+        "https://tildi.com/de/spielzeug",
+        "https://tildi.com/sitemap.xml"
+      ],
       "category_map": {
         "Figuren": "Action Figures & Collectibles",
         "Puppen": "Dolls & Soft Toys",

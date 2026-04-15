@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
+import time
 from datetime import date as date_cls
 from pathlib import Path
 
 from .collect import COLLECTORS
 from .report import render
 from .storage import load_previous, save_snapshot
+
+INTER_SITE_JITTER = (3.0, 8.0)  # seconds; applied between *different* sites
 
 
 def _load_site_config(root: Path) -> dict:
@@ -28,10 +32,16 @@ def _collect_all(root: Path, run_date: str) -> dict:
     cfg = _load_site_config(root)
     cache_dir = root / "data" / "raw"
     sites_out: dict = {}
-    for site_key, site_cfg in cfg.get("sites", {}).items():
+    site_items = list(cfg.get("sites", {}).items())
+    for i, (site_key, site_cfg) in enumerate(site_items):
         collector_cls = COLLECTORS.get(site_key)
         if collector_cls is None:
             continue
+        if i > 0:
+            # Politely spread requests so we don't hammer everyone from
+            # the same IP in rapid succession.
+            lo, hi = INTER_SITE_JITTER
+            time.sleep(random.uniform(lo, hi))
         collector = collector_cls(site_cfg, cache_dir=cache_dir)
         record = collector.collect(run_date)
         sites_out[site_key] = record.to_dict()

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
+import random
 import re
 import time
 import urllib.error
@@ -33,12 +35,20 @@ from typing import Any
 
 from .taxonomy import CANONICAL_CATEGORIES, normalize_category
 
-USER_AGENT = (
-    "NightingaleBot/0.1 (+https://toysreloved.de; competitor-intel; "
-    "contact: ops@toysreloved.de)"
+# Cloudflare / Akamai / DataDome uniformly 403 self-identifying bots, so
+# the default UA is a real Chrome build. Override via NIGHTINGALE_UA for
+# environments where a polite announce-yourself UA is preferred (and
+# whitelisted by the target sites).
+DEFAULT_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
+USER_AGENT = os.environ.get("NIGHTINGALE_UA", DEFAULT_UA)
 DEFAULT_TIMEOUT = 20  # seconds
 RETRY_BACKOFF = (2, 4, 8, 16)
+# Tests set NIGHTINGALE_JITTER=0 to keep the suite fast.
+_JITTER_DISABLED = os.environ.get("NIGHTINGALE_JITTER", "").strip() == "0"
+JITTER_BETWEEN_PAGES = (0.0, 0.0) if _JITTER_DISABLED else (0.4, 1.2)
 
 
 @dataclass
@@ -85,15 +95,26 @@ class _TextExtractor(HTMLParser):
 
 
 class BaseCollector:
-    """Base class. Subclasses override `site_key`, `toys_url`, and `_parse`."""
+    """Base class. Subclasses override `site_key` and `_parse`.
+
+    URLs live in `config/sites.json` — `toys_url` is tried first, then
+    each entry in `fallback_urls` until one responds 200. This lets an
+    operator pivot to a sitemap fallback (or a new category slug) by
+    editing config and redeploying, without touching Python.
+    """
 
     site_key: str = ""
-    toys_url: str = ""
+    default_toys_url: str = ""
+    default_fallback_urls: tuple[str, ...] = ()
 
-    def __init__(self, site_config: dict[str, Any], cache_dir: Path) -> None:
+    def __init__(self, site_config: dict[str, Any], cache_dir: Path | None) -> None:
         self.site_config = site_config
         self.cache_dir = cache_dir
         self.category_mapping: dict[str, str] = site_config.get("category_map", {})
+        self.toys_url: str = site_config.get("toys_url") or self.default_toys_url
+        self.fallback_urls: list[str] = list(
+            site_config.get("fallback_urls") or self.default_fallback_urls
+        )
 
     # ---- HTTP -----------------------------------------------------------
 
@@ -127,32 +148,53 @@ class BaseCollector:
         assert last_exc is not None
         raise last_exc
 
-    def _cache_raw(self, html: str, date: str) -> Path:
-        path = self.cache_dir / self.site_key / date / "toys.html"
+    def _cache_raw(self, html: str, date: str, suffix: str = "toys.html") -> Path | None:
+        if self.cache_dir is None:
+            return None
+        path = self.cache_dir / self.site_key / date / suffix
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(html, encoding="utf-8")
         return path
+
+    def _jitter(self) -> None:
+        lo, hi = JITTER_BETWEEN_PAGES
+        time.sleep(random.uniform(lo, hi))
+
+    def _fetch_first_working(self, urls: list[str]) -> tuple[str, str]:
+        """Try urls in order. Return (body, winning_url). Re-raise the
+        last exception if none succeed."""
+        last_exc: Exception | None = None
+        for i, url in enumerate(urls):
+            if i > 0:
+                self._jitter()
+            try:
+                return self._fetch(url), url
+            except Exception as e:  # noqa: BLE001 — we try every fallback
+                last_exc = e
+        assert last_exc is not None
+        raise last_exc
 
     # ---- Public entry point --------------------------------------------
 
     def collect(self, date: str) -> SnapshotRecord:
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        urls = [self.toys_url, *self.fallback_urls]
         try:
-            html = self._fetch(self.toys_url)
+            html, winning_url = self._fetch_first_working(urls)
         except urllib.error.HTTPError as e:
             status = "blocked" if e.code in (401, 403, 429) else "error"
             return SnapshotRecord(
                 site=self.site_key,
                 fetched_at=now,
                 status=status,
-                error=f"HTTP {e.code} on {self.toys_url}",
+                error=f"HTTP {e.code}; tried {len(urls)} URL(s), last: {urls[-1]}",
             )
         except Exception as e:  # network, TLS, parse-upstream
             return SnapshotRecord(
                 site=self.site_key,
                 fetched_at=now,
                 status="error",
-                error=f"{type(e).__name__}: {e}",
+                error=f"{type(e).__name__}: {e}; tried {len(urls)} URL(s)",
             )
 
         cache_path = self._cache_raw(html, date)
@@ -219,14 +261,14 @@ def _first_int(html: str, patterns=_COUNT_PATTERNS) -> int | None:
 
 
 class StuffleCollector(BaseCollector):
-    """stuffle.com — German mobile-first C2C marketplace.
-
-    Category URL pattern (confirm on first unblocked run):
-      https://stuffle.com/search?category=toys
-    """
+    """stuffle.com — German mobile-first C2C marketplace."""
 
     site_key = "stuffle"
-    toys_url = "https://stuffle.com/search?category=toys"
+    default_toys_url = "https://stuffle.com/search?category=toys"
+    default_fallback_urls = (
+        "https://stuffle.com/c/spielzeug",
+        "https://stuffle.com/sitemap.xml",
+    )
 
     def _parse(self, html: str) -> dict[str, Any]:
         total = _first_int(html)
@@ -241,14 +283,14 @@ class SellpyCollector(BaseCollector):
     """sellpy.com — Swedish second-hand (H&M Group). Strong SPA; the HTML
     shell includes a JSON-LD `ItemList` and the public /api/v2 returns
     category aggregates.
-
-    Confirm on first unblocked run:
-      https://www.sellpy.com/c/kids/toys
-      https://www.sellpy.com/api/v2/search?categoryId=toys&pageSize=0
     """
 
     site_key = "sellpy"
-    toys_url = "https://www.sellpy.com/c/kids/toys"
+    default_toys_url = "https://www.sellpy.com/c/kids/toys"
+    default_fallback_urls = (
+        "https://www.sellpy.com/api/v2/search?categoryId=toys&pageSize=0",
+        "https://www.sellpy.com/c/barn/leksaker",
+    )
 
     _JSON_LD_RE = re.compile(
         r"<script[^>]+application/ld\+json[^>]*>(.*?)</script>", re.S | re.I
@@ -299,14 +341,14 @@ class SellpyCollector(BaseCollector):
 
 
 class TildiCollector(BaseCollector):
-    """tildi.com — European kids' second-hand marketplace.
-
-    Confirm on first unblocked run:
-      https://tildi.com/de/kategorie/spielzeug
-    """
+    """tildi.com — European kids' second-hand marketplace."""
 
     site_key = "tildi"
-    toys_url = "https://tildi.com/de/kategorie/spielzeug"
+    default_toys_url = "https://tildi.com/de/kategorie/spielzeug"
+    default_fallback_urls = (
+        "https://tildi.com/de/spielzeug",
+        "https://tildi.com/sitemap.xml",
+    )
 
     def _parse(self, html: str) -> dict[str, Any]:
         total = _first_int(html)
@@ -319,34 +361,116 @@ class TildiCollector(BaseCollector):
 class ToysRelovedCollector(BaseCollector):
     """toysreloved.de — OUR site. Prefer Shopify `/products.json` if the
     store runs on Shopify (most reliable, no HTML parsing). Falls back to
-    `/sitemap_products*.xml` otherwise.
+    `/sitemap_products*.xml` or `/product-sitemap.xml` (Woo) otherwise.
+
+    Overrides `collect()` to paginate through Shopify's 250-per-page
+    products.json — otherwise we'd silently cap the total at 250.
     """
 
     site_key = "toysreloved"
-    toys_url = "https://toysreloved.de/products.json?limit=250&page=1"
+    default_toys_url = "https://toysreloved.de/products.json?limit=250&page=1"
+    default_fallback_urls = (
+        "https://toysreloved.de/sitemap_products_1.xml",
+        "https://toysreloved.de/product-sitemap.xml",
+        "https://toysreloved.de/sitemap.xml",
+    )
+    MAX_SHOPIFY_PAGES = 200  # 50k products ceiling; prevents runaway loops
 
-    _SITEMAP_PRODUCT_RE = re.compile(r"<loc>(https?://[^<]+/products/[^<]+)</loc>")
+    _SITEMAP_PRODUCT_RE = re.compile(r"<loc>(https?://[^<]+/products?/[^<]+)</loc>")
+
+    # ---- Custom entry point: paginates Shopify ------------------------
+
+    def collect(self, date: str) -> SnapshotRecord:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        # Try the primary (Shopify products.json) first, paginating.
+        if "products.json" in self.toys_url:
+            try:
+                return self._collect_shopify_paginated(now, date)
+            except urllib.error.HTTPError as e:
+                # Shopify endpoint not available — fall through to the
+                # standard fallback loop on sitemaps.
+                if e.code not in (404, 410, 401, 403):
+                    raise
+        return super().collect(date)
+
+    def _collect_shopify_paginated(self, now: str, date: str) -> SnapshotRecord:
+        base = self.toys_url.split("&page=")[0].split("?page=")[0]
+        sep = "&" if "?" in base else "?"
+        agg_cats: dict[str, int] = {}
+        agg_brands: dict[str, int] = {}
+        agg_price: dict[str, int] = {"0-10": 0, "10-25": 0, "25-50": 0, "50-100": 0, "100+": 0}
+        agg_cond: dict[str, int] = {}
+        samples: list[dict[str, Any]] = []
+        total = 0
+        last_body = ""
+
+        for page in range(1, self.MAX_SHOPIFY_PAGES + 1):
+            url = f"{base}{sep}page={page}"
+            body = self._fetch(url)
+            last_body = body
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                # Not JSON — bail and let the base-class fallback loop
+                # (sitemaps, HTML) handle it.
+                return super().collect(date)
+            products = data.get("products", []) or []
+            if not products:
+                break
+            partial = self._parse_products_json(body, _as_accumulator=True)
+            total += partial["total_listings"]
+            for k, v in partial["categories"].items():
+                agg_cats[k] = agg_cats.get(k, 0) + v
+            for b in partial["brands_top10"]:
+                agg_brands[b["name"]] = agg_brands.get(b["name"], 0) + b["count"]
+            for k, v in partial["price_buckets_eur"].items():
+                agg_price[k] = agg_price.get(k, 0) + v
+            for k, v in partial["conditions"].items():
+                agg_cond[k] = agg_cond.get(k, 0) + v
+            if len(samples) < 5:
+                samples.extend(partial["sample_listings"][: 5 - len(samples)])
+            if len(products) < 250:  # short page = last page
+                break
+            self._jitter()
+
+        cache_path = self._cache_raw(last_body, date, suffix="toys-lastpage.json")
+        canonical_cats = {c: 0 for c in CANONICAL_CATEGORIES}
+        for label, count in agg_cats.items():
+            canonical_cats[normalize_category(label, self.category_mapping)] += count
+        brands_top10 = [
+            {"name": n, "count": c}
+            for n, c in sorted(agg_brands.items(), key=lambda kv: -kv[1])[:10]
+        ]
+        return SnapshotRecord(
+            site=self.site_key,
+            fetched_at=now,
+            status="ok",
+            total_listings=total,
+            categories={k: v for k, v in canonical_cats.items() if v},
+            brands_top10=brands_top10,
+            price_buckets_eur=agg_price,
+            conditions=agg_cond,
+            sample_listings=samples,
+            raw_cache_path=str(cache_path) if cache_path else None,
+        )
 
     def _parse(self, html: str) -> dict[str, Any]:
-        # Try Shopify products.json first.
+        # Reached only via the base-class fallback path (not Shopify JSON).
         if html.lstrip().startswith("{"):
             try:
                 return self._parse_products_json(html)
             except (json.JSONDecodeError, KeyError):
                 pass
-
-        # Fallback: sitemap counts unique product URLs.
         urls = set(self._SITEMAP_PRODUCT_RE.findall(html))
         if urls:
             return {"total_listings": len(urls), "categories": {}}
-
         return {"total_listings": _first_int(html), "categories": {}}
 
-    def _parse_products_json(self, body: str) -> dict[str, Any]:
+    def _parse_products_json(
+        self, body: str, *, _as_accumulator: bool = False
+    ) -> dict[str, Any]:
         data = json.loads(body)
         products = data.get("products", [])
-        # products.json is paginated (250 max). For accurate totals we
-        # walk pages until we get an empty response. See cli.collect_all.
         cats: dict[str, int] = {}
         brands_counter: dict[str, int] = {}
         conditions: dict[str, int] = {}

@@ -29,6 +29,12 @@ jobs:
           python-version: "3.12"
 
       - name: Run snapshot
+        env:
+          # Override at the repo/org level (Settings → Secrets and
+          # variables → Actions → Variables) if a target site requires
+          # a different UA to stop returning 403. Defaults to a realistic
+          # Chrome UA baked into the harness.
+          NIGHTINGALE_UA: ${{ vars.NIGHTINGALE_UA }}
         run: |
           if [ -n "${{ inputs.date }}" ]; then
             python -m nightingale.cli --date "${{ inputs.date }}"

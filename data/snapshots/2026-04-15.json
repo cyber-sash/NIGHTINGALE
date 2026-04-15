@@ -3,7 +3,7 @@
   "sites": {
     "toysreloved": {
       "site": "toysreloved",
-      "fetched_at": "2026-04-15T21:13:21+00:00",
+      "fetched_at": "2026-04-15T21:29:21+00:00",
       "status": "blocked",
       "total_listings": null,
       "categories": {},
@@ -11,12 +11,12 @@
       "price_buckets_eur": {},
       "conditions": {},
       "sample_listings": [],
-      "error": "HTTP 403 on https://toysreloved.de/products.json?limit=250&page=1",
+      "error": "HTTP 403; tried 4 URL(s), last: https://toysreloved.de/sitemap.xml",
       "raw_cache_path": null
     },
     "stuffle": {
       "site": "stuffle",
-      "fetched_at": "2026-04-15T21:13:53+00:00",
+      "fetched_at": "2026-04-15T21:31:26+00:00",
       "status": "blocked",
       "total_listings": null,
       "categories": {},
@@ -24,12 +24,12 @@
       "price_buckets_eur": {},
       "conditions": {},
       "sample_listings": [],
-      "error": "HTTP 403 on https://stuffle.com/search?category=toys",
+      "error": "HTTP 403; tried 3 URL(s), last: https://stuffle.com/sitemap.xml",
       "raw_cache_path": null
     },
     "sellpy": {
       "site": "sellpy",
-      "fetched_at": "2026-04-15T21:14:23+00:00",
+      "fetched_at": "2026-04-15T21:33:02+00:00",
       "status": "blocked",
       "total_listings": null,
       "categories": {},
@@ -37,12 +37,12 @@
       "price_buckets_eur": {},
       "conditions": {},
       "sample_listings": [],
-      "error": "HTTP 403 on https://www.sellpy.com/c/kids/toys",
+      "error": "HTTP 403; tried 3 URL(s), last: https://www.sellpy.com/c/barn/leksaker",
       "raw_cache_path": null
     },
     "tildi": {
       "site": "tildi",
-      "fetched_at": "2026-04-15T21:14:55+00:00",
+      "fetched_at": "2026-04-15T21:34:41+00:00",
       "status": "blocked",
       "total_listings": null,
       "categories": {},
@@ -50,7 +50,7 @@
       "price_buckets_eur": {},
       "conditions": {},
       "sample_listings": [],
-      "error": "HTTP 403 on https://tildi.com/de/kategorie/spielzeug",
+      "error": "HTTP 403; tried 3 URL(s), last: https://tildi.com/sitemap.xml",
       "raw_cache_path": null
     }
   }
