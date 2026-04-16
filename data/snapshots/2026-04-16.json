@@ -1,0 +1,57 @@
+{
+  "date": "2026-04-16",
+  "sites": {
+    "toysreloved": {
+      "site": "toysreloved",
+      "fetched_at": "2026-04-16T05:13:02+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403; tried 4 URL(s), last: https://toysreloved.de/sitemap.xml",
+      "raw_cache_path": null
+    },
+    "stuffle": {
+      "site": "stuffle",
+      "fetched_at": "2026-04-16T05:15:13+00:00",
+      "status": "ok",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": null,
+      "raw_cache_path": "/home/runner/work/NIGHTINGALE/NIGHTINGALE/data/raw/stuffle/2026-04-16/toys.html"
+    },
+    "sellpy": {
+      "site": "sellpy",
+      "fetched_at": "2026-04-16T05:15:23+00:00",
+      "status": "ok",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": null,
+      "raw_cache_path": "/home/runner/work/NIGHTINGALE/NIGHTINGALE/data/raw/sellpy/2026-04-16/toys.html"
+    },
+    "tildi": {
+      "site": "tildi",
+      "fetched_at": "2026-04-16T05:15:30+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403; tried 3 URL(s), last: https://tildi.com/sitemap.xml",
+      "raw_cache_path": null
+    }
+  }
+}
