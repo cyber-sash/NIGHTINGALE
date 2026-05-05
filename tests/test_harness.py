@@ -24,6 +24,7 @@ from nightingale.collect import (  # noqa: E402 — env flag set first
 )
 from nightingale.report import render  # noqa: E402
 from nightingale.taxonomy import CANONICAL_CATEGORIES, normalize_category  # noqa: E402
+from nightingale.trends import analyze, format_text, _alerts  # noqa: E402
 
 
 class TaxonomyTests(unittest.TestCase):
@@ -299,6 +300,81 @@ class SellpyApiJsonTests(unittest.TestCase):
         self.assertEqual(parsed["total_listings"], 2500)
         self.assertEqual(parsed["categories"]["Dockor"], 400)
         self.assertEqual(parsed["categories"]["LEGO"], 800)
+
+
+class TrendAnalysisTests(unittest.TestCase):
+    def _make_snap(self, date: str, site: str, status: str, total: int | None) -> dict:
+        return {
+            "date": date,
+            "sites": {
+                site: {
+                    "status": status,
+                    "total_listings": total,
+                    "categories": {},
+                },
+            },
+        }
+
+    def test_analyze_with_existing_snapshots(self) -> None:
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            snap_dir = root / "data" / "snapshots"
+            snap_dir.mkdir(parents=True)
+            for i, total in enumerate([100, 105, 110, 115, 108, 120, 125]):
+                date = f"2026-05-{i + 1:02d}"
+                snap = {
+                    "date": date,
+                    "sites": {
+                        "stuffle": {"status": "ok", "total_listings": total, "categories": {}},
+                        "toysreloved": {"status": "blocked", "total_listings": None, "categories": {}},
+                        "sellpy": {"status": "ok", "total_listings": total + 50, "categories": {}},
+                        "tildi": {"status": "blocked", "total_listings": None, "categories": {}},
+                    },
+                }
+                (snap_dir / f"{date}.json").write_text(json.dumps(snap))
+
+            report = analyze(root, "2026-05-07", days=7)
+            self.assertEqual(report["snapshots_found"], 7)
+            stuffle = report["sites"]["stuffle"]
+            self.assertEqual(stuffle["latest_total"], 125)
+            self.assertEqual(stuffle["min_total"], 100)
+            self.assertEqual(stuffle["max_total"], 125)
+            self.assertEqual(stuffle["ok_days"], 7)
+            self.assertIsNotNone(stuffle["week_over_week"])
+            self.assertEqual(stuffle["week_over_week"]["pct"], 25.0)
+            self.assertTrue(len(stuffle["day_over_day"]) > 0)
+
+    def test_alerts_fire_for_consecutive_blocked(self) -> None:
+        snaps = []
+        for i in range(5):
+            date = f"2026-05-{i + 1:02d}"
+            snaps.append({
+                "date": date,
+                "sites": {
+                    "tildi": {"status": "blocked", "total_listings": None},
+                },
+            })
+        alerts = _alerts(snaps)
+        blocked_alerts = [a for a in alerts if a["type"] == "consecutive_blocked" and a["site"] == "tildi"]
+        self.assertEqual(len(blocked_alerts), 1)
+        self.assertEqual(blocked_alerts[0]["days"], 5)
+
+    def test_alerts_fire_for_big_swing(self) -> None:
+        snaps = [
+            {"date": "2026-05-01", "sites": {"stuffle": {"status": "ok", "total_listings": 1000}}},
+            {"date": "2026-05-02", "sites": {"stuffle": {"status": "ok", "total_listings": 1200}}},
+        ]
+        alerts = _alerts(snaps)
+        swing_alerts = [a for a in alerts if a["type"] == "big_swing"]
+        self.assertEqual(len(swing_alerts), 1)
+        self.assertAlmostEqual(swing_alerts[0]["pct"], 20.0)
+
+    def test_format_text_no_crash_on_empty(self) -> None:
+        report = {"error": "no snapshots found", "dates_checked": ["2099-01-01"]}
+        text = format_text(report)
+        self.assertIn("no snapshots found", text)
 
 
 class StuffleEmbeddedJsonTests(unittest.TestCase):

@@ -3,8 +3,9 @@
 Run order for a daily cron job:
 
     cd /srv/nightingale
-    python -m nightingale.cli            # today
+    python -m nightingale.cli            # today (collect + report)
     python -m nightingale.cli --date 2026-04-15
+    python -m nightingale.cli --trends --days 7   # trend analysis only
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pathlib import Path
 from .collect import COLLECTORS
 from .report import render
 from .storage import load_previous, save_snapshot
+from .trends import analyze, format_text
 
 INTER_SITE_JITTER = (3.0, 8.0)  # seconds; applied between *different* sites
 
@@ -38,8 +40,6 @@ def _collect_all(root: Path, run_date: str) -> dict:
         if collector_cls is None:
             continue
         if i > 0:
-            # Politely spread requests so we don't hammer everyone from
-            # the same IP in rapid succession.
             lo, hi = INTER_SITE_JITTER
             time.sleep(random.uniform(lo, hi))
         collector = collector_cls(site_cfg, cache_dir=cache_dir)
@@ -65,8 +65,32 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip collection; re-render the report from an existing snapshot.",
     )
+    parser.add_argument(
+        "--trends",
+        action="store_true",
+        help="Run trend analysis over multiple days and print results.",
+    )
+    parser.add_argument(
+        "--trends-json",
+        action="store_true",
+        help="Like --trends but output raw JSON instead of formatted text.",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=7,
+        help="Number of days for trend analysis (default 7).",
+    )
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
+
+    if args.trends or args.trends_json:
+        report = analyze(root, args.date, days=args.days)
+        if args.trends_json:
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+        else:
+            print(format_text(report))
+        return 0
 
     if args.report_only:
         snap_path = root / "data" / "snapshots" / f"{args.date}.json"
