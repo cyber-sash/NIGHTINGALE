@@ -5,8 +5,11 @@
       "role": "self",
       "toys_url": "https://toysreloved.de/products.json?limit=250&page=1",
       "fallback_urls": [
+        "https://toysreloved.de/collections/all.json",
+        "https://toysreloved.de/collections.json",
         "https://toysreloved.de/sitemap_products_1.xml",
         "https://toysreloved.de/product-sitemap.xml",
+        "https://toysreloved.de/wp-json/wc/store/v1/products?per_page=1",
         "https://toysreloved.de/sitemap.xml"
       ],
       "category_map": {
@@ -46,6 +49,7 @@
       "toys_url": "https://stuffle.com/search?category=toys",
       "fallback_urls": [
         "https://stuffle.com/c/spielzeug",
+        "https://stuffle.com/suche?kategorie=spielzeug",
         "https://stuffle.com/sitemap.xml"
       ],
       "category_map": {
@@ -71,7 +75,8 @@
       "toys_url": "https://www.sellpy.com/c/kids/toys",
       "fallback_urls": [
         "https://www.sellpy.com/api/v2/search?categoryId=toys&pageSize=0",
-        "https://www.sellpy.com/c/barn/leksaker"
+        "https://www.sellpy.com/c/barn/leksaker",
+        "https://www.sellpy.com/search?query=toys&category=kids"
       ],
       "category_map": {
         "Figurer": "Action Figures & Collectibles",
@@ -99,6 +104,9 @@
       "toys_url": "https://tildi.com/de/kategorie/spielzeug",
       "fallback_urls": [
         "https://tildi.com/de/spielzeug",
+        "https://tildi.com/kategorie/spielzeug",
+        "https://tildi.com/c/spielzeug",
+        "https://tildi.com/toys",
         "https://tildi.com/sitemap.xml"
       ],
       "category_map": {

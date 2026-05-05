@@ -64,6 +64,7 @@ class SnapshotRecord:
     sample_listings: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
     raw_cache_path: str | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -76,22 +77,63 @@ class _TextExtractor(HTMLParser):
         super().__init__()
         self._chunks: list[str] = []
         self._skip = False
+        self._title_chunks: list[str] = []
+        self._in_title = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in ("script", "style", "noscript"):
             self._skip = True
+        if tag == "title":
+            self._in_title = True
 
     def handle_endtag(self, tag: str) -> None:
         if tag in ("script", "style", "noscript"):
             self._skip = False
+        if tag == "title":
+            self._in_title = False
 
     def handle_data(self, data: str) -> None:
+        if self._in_title and data.strip():
+            self._title_chunks.append(data.strip())
         if not self._skip and data.strip():
             self._chunks.append(data.strip())
 
     @property
     def text(self) -> str:
         return " ".join(self._chunks)
+
+    @property
+    def title(self) -> str:
+        return " ".join(self._title_chunks)
+
+
+def _extract_diagnostics(html: str, winning_url: str) -> dict[str, Any]:
+    """Capture debugging info from an HTML response. Written into the
+    snapshot JSON so we can debug parser misses without downloading raw HTML."""
+    ext = _TextExtractor()
+    try:
+        ext.feed(html)
+    except Exception:
+        pass
+    text_preview = ext.text[:800] if ext.text else ""
+    platform = "unknown"
+    if "__NEXT_DATA__" in html:
+        platform = "nextjs"
+    elif "__NUXT__" in html or "nuxt" in html[:2000].lower():
+        platform = "nuxt"
+    elif "ng-app" in html or "ng-version" in html:
+        platform = "angular"
+    elif '"shopify"' in html.lower() or "cdn.shopify.com" in html:
+        platform = "shopify"
+    elif "wp-content" in html or "wordpress" in html.lower():
+        platform = "wordpress"
+    return {
+        "winning_url": winning_url,
+        "response_bytes": len(html.encode("utf-8")),
+        "page_title": ext.title or None,
+        "text_preview": text_preview or None,
+        "detected_platform": platform,
+    }
 
 
 class BaseCollector:
@@ -198,6 +240,7 @@ class BaseCollector:
             )
 
         cache_path = self._cache_raw(html, date)
+        diag = _extract_diagnostics(html, winning_url)
         try:
             parsed = self._parse(html)
         except Exception as e:
@@ -207,6 +250,7 @@ class BaseCollector:
                 status="error",
                 error=f"parse failure: {type(e).__name__}: {e}",
                 raw_cache_path=str(cache_path),
+                diagnostics=diag,
             )
 
         # Normalize category labels against canonical taxonomy.
@@ -226,6 +270,7 @@ class BaseCollector:
             conditions=parsed.get("conditions", {}),
             sample_listings=parsed.get("sample_listings", []),
             raw_cache_path=str(cache_path),
+            diagnostics=diag,
         )
 
     # ---- Extension point ------------------------------------------------
@@ -240,18 +285,65 @@ class BaseCollector:
 
 
 _COUNT_PATTERNS = (
-    # Match "12,345 Artikel", "12.345 Treffer", "12345 items", "(12345)"
-    re.compile(r"([\d.,]{2,})\s*(?:Artikel|Treffer|Angebote|Produkte|items?|results?|listings?)", re.I),
-    re.compile(r"\"(?:totalCount|total_results|total_items|hits)\"\s*:\s*(\d+)"),
-    re.compile(r"data-total(?:-count|-results)?=\"(\d+)\""),
+    # Visible text: "12,345 Artikel", "12.345 Treffer", "12345 items"
+    re.compile(r"([\d.,]{2,})\s*(?:Artikel|Treffer|Angebote|Produkte|Ergebnisse|items?|results?|listings?|annonce[rn]?|objets?|produkter)", re.I),
+    # JSON keys in embedded state (various naming conventions)
+    re.compile(r"\"(?:totalCount|total_count|totalResults|total_results|total_items|totalItems|nbHits|hits|numFound|count|itemCount|numberOfItems|totalHits|total)\"\s*:\s*(\d+)"),
+    # data-* attributes
+    re.compile(r"data-(?:total|count|results|items|hits)(?:-count|-results)?=\"(\d+)\""),
+    # Parenthesised count in a heading/nav like "Toys (1 234)"
+    re.compile(r"(?:Toys?|Spielzeug|Leksaker|Jouets?)\s*\(\s*([\d\s.,]+)\s*\)", re.I),
+    # "Showing N of M" or "N results" patterns
+    re.compile(r"(?:showing|visar|zeige)\s+\d+\s+(?:of|von|av)\s+([\d.,]+)", re.I),
+    # meta content: <meta name="..." content="... 1234 items ...">
+    re.compile(r'content="[^"]*?([\d.,]{2,})\s*(?:items?|products?|results?|Produkte|Angebote)[^"]*"', re.I),
+    # og:title or page title with count
+    re.compile(r"<title>[^<]*?([\d.,]{2,})\s*(?:items?|products?|results?|Produkte|Angebote)[^<]*</title>", re.I),
 )
 
 
-def _first_int(html: str, patterns=_COUNT_PATTERNS) -> int | None:
+def _first_int(html: str, patterns: tuple = _COUNT_PATTERNS) -> int | None:
     for pat in patterns:
         m = pat.search(html)
         if m:
-            return int(re.sub(r"[.,]", "", m.group(1)))
+            raw = re.sub(r"[\s.,]", "", m.group(1))
+            if raw.isdigit() and int(raw) > 0:
+                return int(raw)
+    return None
+
+
+def _deep_search_json(html: str, keys: set[str]) -> int | None:
+    """Search ALL <script> tags for JSON blobs containing any of `keys`.
+    Returns the first integer value found for a matching key."""
+    for m in re.finditer(r"<script[^>]*>(.*?)</script>", html, re.S | re.I):
+        blob = m.group(1).strip()
+        if not blob or blob[0] not in ("{", "["):
+            continue
+        try:
+            obj = json.loads(blob)
+        except (json.JSONDecodeError, RecursionError):
+            continue
+        result = _walk_for_keys(obj, keys, depth=0)
+        if result is not None:
+            return result
+    return None
+
+
+def _walk_for_keys(obj: Any, keys: set[str], depth: int) -> int | None:
+    if depth > 12:
+        return None
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in keys and isinstance(v, (int, float)) and v > 0:
+                return int(v)
+            found = _walk_for_keys(v, keys, depth + 1)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for item in obj[:50]:
+            found = _walk_for_keys(item, keys, depth + 1)
+            if found is not None:
+                return found
     return None
 
 
@@ -267,16 +359,43 @@ class StuffleCollector(BaseCollector):
     default_toys_url = "https://stuffle.com/search?category=toys"
     default_fallback_urls = (
         "https://stuffle.com/c/spielzeug",
+        "https://stuffle.com/suche?kategorie=spielzeug",
         "https://stuffle.com/sitemap.xml",
     )
 
+    _TOTAL_KEYS = {"totalCount", "total_count", "totalResults", "nbHits", "total", "count", "hits", "numFound"}
+
     def _parse(self, html: str) -> dict[str, Any]:
         total = _first_int(html)
-        # TODO once unblocked: pull subcategory facet counts from the left
-        # rail. Stuffle renders them inside <li class="facet__value"> with
-        # data-count attributes. Until we have a real page sample we expose
-        # only total_listings.
-        return {"total_listings": total, "categories": {}}
+        cats: dict[str, int] = {}
+
+        if total is None:
+            total = _deep_search_json(html, self._TOTAL_KEYS)
+
+        # Extract subcategory facets from embedded JSON state or HTML
+        for m in re.finditer(r"<script[^>]*>(.*?)</script>", html, re.S | re.I):
+            blob = m.group(1).strip()
+            if not blob or blob[0] not in ("{", "["):
+                continue
+            try:
+                obj = json.loads(blob)
+            except (json.JSONDecodeError, RecursionError):
+                continue
+            cats.update(_extract_facets_from_json(obj, "categor"))
+
+        # HTML facets: <a ...>Label (123)</a> or <span class="count">123</span>
+        for match in re.finditer(
+            r'<(?:a|li|span)[^>]*>\s*([^<]{2,50}?)\s*\(\s*(\d+)\s*\)\s*</(?:a|li|span)>',
+            html, re.I,
+        ):
+            label, count = match.group(1).strip(), int(match.group(2))
+            if count > 0:
+                cats[label] = count
+
+        if total is None and cats:
+            total = sum(cats.values())
+
+        return {"total_listings": total, "categories": cats}
 
 
 class SellpyCollector(BaseCollector):
@@ -290,13 +409,20 @@ class SellpyCollector(BaseCollector):
     default_fallback_urls = (
         "https://www.sellpy.com/api/v2/search?categoryId=toys&pageSize=0",
         "https://www.sellpy.com/c/barn/leksaker",
+        "https://www.sellpy.com/search?query=toys&category=kids",
     )
 
     _JSON_LD_RE = re.compile(
         r"<script[^>]+application/ld\+json[^>]*>(.*?)</script>", re.S | re.I
     )
+    _TOTAL_KEYS = {"totalCount", "total_count", "totalResults", "nbHits", "total", "count", "numberOfItems", "numFound", "itemCount", "totalHits"}
 
     def _parse(self, html: str) -> dict[str, Any]:
+        # If the response is raw JSON (from the API fallback), parse directly.
+        stripped = html.lstrip()
+        if stripped and stripped[0] in ("{", "["):
+            return self._parse_api_json(stripped)
+
         total = _first_int(html)
         cats: dict[str, int] = {}
         brands: list[dict[str, Any]] = []
@@ -313,6 +439,10 @@ class SellpyCollector(BaseCollector):
                     if total is None and isinstance(c.get("numberOfItems"), int):
                         total = c["numberOfItems"]
 
+        # Search ALL embedded JSON blobs for total count.
+        if total is None:
+            total = _deep_search_json(html, self._TOTAL_KEYS)
+
         # Facet counts are embedded as a JSON payload in __NEXT_DATA__.
         m = re.search(
             r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.S
@@ -323,21 +453,73 @@ class SellpyCollector(BaseCollector):
             except json.JSONDecodeError:
                 data = None
             if data:
-                facets = _dig(data, ("props", "pageProps", "facets")) or {}
-                for facet in facets.get("categories", []) or []:
-                    name = facet.get("name") or facet.get("label")
-                    count = facet.get("count") or facet.get("docCount")
-                    if name and isinstance(count, int):
-                        cats[name] = count
-                for b in (facets.get("brands") or [])[:10]:
-                    if b.get("name"):
-                        brands.append({"name": b["name"], "count": b.get("count", 0)})
+                # Walk multiple possible paths — Sellpy's __NEXT_DATA__
+                # structure varies across deploys.
+                for path in (
+                    ("props", "pageProps", "facets"),
+                    ("props", "pageProps", "initialData", "facets"),
+                    ("props", "pageProps", "searchResult", "facets"),
+                    ("props", "pageProps", "data", "facets"),
+                ):
+                    facets = _dig(data, path)
+                    if facets:
+                        break
+                else:
+                    facets = {}
+
+                if isinstance(facets, dict):
+                    for facet in facets.get("categories", []) or []:
+                        name = facet.get("name") or facet.get("label")
+                        count = facet.get("count") or facet.get("docCount")
+                        if name and isinstance(count, int):
+                            cats[name] = count
+                    for b in (facets.get("brands") or [])[:10]:
+                        if b.get("name"):
+                            brands.append({"name": b["name"], "count": b.get("count", 0)})
+
+                # Also look for total in __NEXT_DATA__ directly.
+                if total is None:
+                    for tpath in (
+                        ("props", "pageProps", "totalCount"),
+                        ("props", "pageProps", "searchResult", "totalCount"),
+                        ("props", "pageProps", "initialData", "totalCount"),
+                        ("props", "pageProps", "data", "total"),
+                    ):
+                        val = _dig(data, tpath)
+                        if isinstance(val, int) and val > 0:
+                            total = val
+                            break
+
+        if total is None and cats:
+            total = sum(cats.values())
 
         return {
             "total_listings": total,
             "categories": cats,
             "brands_top10": brands,
         }
+
+    def _parse_api_json(self, body: str) -> dict[str, Any]:
+        """Parse a raw JSON response from /api/v2/search."""
+        data = json.loads(body)
+        total = None
+        cats: dict[str, int] = {}
+        brands: list[dict[str, Any]] = []
+        for key in ("totalCount", "total", "nbHits", "count", "totalResults"):
+            if isinstance(data.get(key), int):
+                total = data[key]
+                break
+        for facet in (data.get("facets", {}) or {}).get("categories", []) or []:
+            name = facet.get("name") or facet.get("label")
+            count = facet.get("count") or facet.get("docCount")
+            if name and isinstance(count, int):
+                cats[name] = count
+        for b in ((data.get("facets", {}) or {}).get("brands") or [])[:10]:
+            if b.get("name"):
+                brands.append({"name": b["name"], "count": b.get("count", 0)})
+        if total is None and cats:
+            total = sum(cats.values())
+        return {"total_listings": total, "categories": cats, "brands_top10": brands}
 
 
 class TildiCollector(BaseCollector):
@@ -347,15 +529,44 @@ class TildiCollector(BaseCollector):
     default_toys_url = "https://tildi.com/de/kategorie/spielzeug"
     default_fallback_urls = (
         "https://tildi.com/de/spielzeug",
+        "https://tildi.com/kategorie/spielzeug",
+        "https://tildi.com/c/spielzeug",
+        "https://tildi.com/toys",
         "https://tildi.com/sitemap.xml",
     )
 
+    _TOTAL_KEYS = {"totalCount", "total_count", "totalResults", "nbHits", "total", "count", "hits", "numFound"}
+
     def _parse(self, html: str) -> dict[str, Any]:
         total = _first_int(html)
-        # TODO: subcategory nav lives in <nav class="category-tree">; each
-        # <a> carries the count as trailing "(N)". Extract once we have a
-        # sample of the real page.
-        return {"total_listings": total, "categories": {}}
+        cats: dict[str, int] = {}
+
+        if total is None:
+            total = _deep_search_json(html, self._TOTAL_KEYS)
+
+        # Extract categories from embedded JSON or HTML facet links
+        for m in re.finditer(r"<script[^>]*>(.*?)</script>", html, re.S | re.I):
+            blob = m.group(1).strip()
+            if not blob or blob[0] not in ("{", "["):
+                continue
+            try:
+                obj = json.loads(blob)
+            except (json.JSONDecodeError, RecursionError):
+                continue
+            cats.update(_extract_facets_from_json(obj, "categor"))
+
+        for match in re.finditer(
+            r'<(?:a|li|span)[^>]*>\s*([^<]{2,50}?)\s*\(\s*(\d+)\s*\)\s*</(?:a|li|span)>',
+            html, re.I,
+        ):
+            label, count = match.group(1).strip(), int(match.group(2))
+            if count > 0:
+                cats[label] = count
+
+        if total is None and cats:
+            total = sum(cats.values())
+
+        return {"total_listings": total, "categories": cats}
 
 
 class ToysRelovedCollector(BaseCollector):
@@ -370,8 +581,11 @@ class ToysRelovedCollector(BaseCollector):
     site_key = "toysreloved"
     default_toys_url = "https://toysreloved.de/products.json?limit=250&page=1"
     default_fallback_urls = (
+        "https://toysreloved.de/collections/all.json",
+        "https://toysreloved.de/collections.json",
         "https://toysreloved.de/sitemap_products_1.xml",
         "https://toysreloved.de/product-sitemap.xml",
+        "https://toysreloved.de/wp-json/wc/store/v1/products?per_page=1",
         "https://toysreloved.de/sitemap.xml",
     )
     MAX_SHOPIFY_PAGES = 200  # 50k products ceiling; prevents runaway loops
@@ -553,6 +767,35 @@ def _dig(obj: Any, path: tuple[str, ...]) -> Any:
             return None
         cur = cur.get(key)
     return cur
+
+
+def _extract_facets_from_json(obj: Any, key_hint: str, depth: int = 0) -> dict[str, int]:
+    """Walk a JSON tree and find list-of-{name, count} entries whose
+    parent key contains `key_hint` (case-insensitive). Returns the first
+    match as a {name: count} dict."""
+    if depth > 10:
+        return {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if key_hint in k.lower() and isinstance(v, list):
+                result: dict[str, int] = {}
+                for item in v:
+                    if isinstance(item, dict):
+                        name = item.get("name") or item.get("label") or item.get("title")
+                        count = item.get("count") or item.get("docCount") or item.get("doc_count")
+                        if name and isinstance(count, int) and count > 0:
+                            result[str(name)] = count
+                if result:
+                    return result
+            found = _extract_facets_from_json(v, key_hint, depth + 1)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for item in obj[:30]:
+            found = _extract_facets_from_json(item, key_hint, depth + 1)
+            if found:
+                return found
+    return {}
 
 
 COLLECTORS: dict[str, type[BaseCollector]] = {

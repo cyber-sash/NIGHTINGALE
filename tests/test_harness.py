@@ -15,8 +15,12 @@ from unittest.mock import patch
 os.environ.setdefault("NIGHTINGALE_JITTER", "0")
 
 from nightingale.collect import (  # noqa: E402 — env flag set first
+    SellpyCollector,
     StuffleCollector,
     ToysRelovedCollector,
+    _deep_search_json,
+    _extract_diagnostics,
+    _first_int,
 )
 from nightingale.report import render  # noqa: E402
 from nightingale.taxonomy import CANONICAL_CATEGORIES, normalize_category  # noqa: E402
@@ -227,6 +231,90 @@ class ReportRenderTests(unittest.TestCase):
         md = render("2026-04-15", snap, previous=prev)
         self.assertIn("+10.0%", md)       # toysreloved grew 10%
         self.assertNotIn("+0.2%", md.split("## Signals")[1])  # sub-5% not signalled
+
+
+class DeepJsonSearchTests(unittest.TestCase):
+    def test_finds_totalCount_in_nested_json(self) -> None:
+        html = '<html><script>{"data":{"search":{"totalCount":4321}}}</script></html>'
+        result = _deep_search_json(html, {"totalCount"})
+        self.assertEqual(result, 4321)
+
+    def test_finds_nbHits_in_algolia_style_response(self) -> None:
+        html = '<script type="application/json">{"results":[{"nbHits":999}]}</script>'
+        result = _deep_search_json(html, {"nbHits"})
+        self.assertEqual(result, 999)
+
+    def test_returns_none_when_no_match(self) -> None:
+        html = "<html><body>no scripts here</body></html>"
+        result = _deep_search_json(html, {"totalCount"})
+        self.assertIsNone(result)
+
+
+class BroadenedCountPatternsTests(unittest.TestCase):
+    def test_german_ergebnisse(self) -> None:
+        self.assertEqual(_first_int("12.345 Ergebnisse gefunden"), 12345)
+
+    def test_parenthesised_spielzeug(self) -> None:
+        self.assertEqual(_first_int("Spielzeug (2 456)"), 2456)
+
+    def test_json_key_totalResults(self) -> None:
+        self.assertEqual(_first_int('"totalResults": 789'), 789)
+
+    def test_meta_tag_products(self) -> None:
+        html = '<meta name="desc" content="Browse 1,500 products online">'
+        self.assertEqual(_first_int(html), 1500)
+
+
+class DiagnosticsTests(unittest.TestCase):
+    def test_extracts_title_and_platform(self) -> None:
+        html = '<html><head><title>Toys Category</title></head><body><script id="__NEXT_DATA__">{}</script></body></html>'
+        diag = _extract_diagnostics(html, "https://example.com/toys")
+        self.assertEqual(diag["page_title"], "Toys Category")
+        self.assertEqual(diag["detected_platform"], "nextjs")
+        self.assertEqual(diag["winning_url"], "https://example.com/toys")
+        self.assertGreater(diag["response_bytes"], 0)
+
+    def test_detects_shopify(self) -> None:
+        html = '<html><script src="https://cdn.shopify.com/s/files/1/123"></script></html>'
+        diag = _extract_diagnostics(html, "https://example.com/")
+        self.assertEqual(diag["detected_platform"], "shopify")
+
+
+class SellpyApiJsonTests(unittest.TestCase):
+    def test_parses_direct_api_response(self) -> None:
+        body = json.dumps({
+            "totalCount": 2500,
+            "facets": {
+                "categories": [
+                    {"name": "Dockor", "count": 400},
+                    {"name": "LEGO", "count": 800},
+                ],
+                "brands": [
+                    {"name": "LEGO", "count": 800},
+                ],
+            },
+        })
+        collector = SellpyCollector(site_config={}, cache_dir=None)
+        parsed = collector._parse(body)
+        self.assertEqual(parsed["total_listings"], 2500)
+        self.assertEqual(parsed["categories"]["Dockor"], 400)
+        self.assertEqual(parsed["categories"]["LEGO"], 800)
+
+
+class StuffleEmbeddedJsonTests(unittest.TestCase):
+    def test_extracts_total_from_embedded_json(self) -> None:
+        html = '<html><script>{"search":{"totalCount":5678}}</script></html>'
+        collector = StuffleCollector(site_config={}, cache_dir=None)
+        parsed = collector._parse(html)
+        self.assertEqual(parsed["total_listings"], 5678)
+
+    def test_extracts_facets_from_html_links(self) -> None:
+        html = '<ul><li><a href="/c/puppen">Puppen (234)</a></li><li><a href="/c/lego">LEGO (567)</a></li></ul>'
+        collector = StuffleCollector(site_config={}, cache_dir=None)
+        parsed = collector._parse(html)
+        self.assertEqual(parsed["categories"]["Puppen"], 234)
+        self.assertEqual(parsed["categories"]["LEGO"], 567)
+        self.assertEqual(parsed["total_listings"], 801)
 
 
 if __name__ == "__main__":
