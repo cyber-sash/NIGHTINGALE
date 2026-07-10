@@ -1,0 +1,67 @@
+{
+  "date": "2026-07-10",
+  "sites": {
+    "toysreloved": {
+      "site": "toysreloved",
+      "fetched_at": "2026-07-10T06:14:33+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403; tried 7 URL(s), last: https://toysreloved.de/sitemap.xml",
+      "raw_cache_path": null,
+      "diagnostics": {}
+    },
+    "stuffle": {
+      "site": "stuffle",
+      "fetched_at": "2026-07-10T06:18:13+00:00",
+      "status": "error",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "URLError: <urlopen error [Errno 101] Network is unreachable>; tried 4 URL(s)",
+      "raw_cache_path": null,
+      "diagnostics": {}
+    },
+    "sellpy": {
+      "site": "sellpy",
+      "fetched_at": "2026-07-10T06:26:57+00:00",
+      "status": "ok",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": null,
+      "raw_cache_path": "/home/runner/work/NIGHTINGALE/NIGHTINGALE/data/raw/sellpy/2026-07-10/toys.html",
+      "diagnostics": {
+        "winning_url": "https://www.sellpy.com/c/kids/toys",
+        "response_bytes": 5680,
+        "page_title": null,
+        "text_preview": null,
+        "detected_platform": "unknown"
+      }
+    },
+    "tildi": {
+      "site": "tildi",
+      "fetched_at": "2026-07-10T06:27:05+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403; tried 6 URL(s), last: https://tildi.com/sitemap.xml",
+      "raw_cache_path": null,
+      "diagnostics": {}
+    }
+  }
+}
