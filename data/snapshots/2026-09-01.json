@@ -1,0 +1,73 @@
+{
+  "date": "2026-09-01",
+  "sites": {
+    "toysreloved": {
+      "site": "toysreloved",
+      "fetched_at": "2026-09-01T07:48:07+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403; tried 7 URL(s), last: https://toysreloved.de/sitemap.xml",
+      "raw_cache_path": null,
+      "diagnostics": {}
+    },
+    "stuffle": {
+      "site": "stuffle",
+      "fetched_at": "2026-09-01T07:51:46+00:00",
+      "status": "ok",
+      "total_listings": 501,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": null,
+      "raw_cache_path": "/home/runner/work/NIGHTINGALE/NIGHTINGALE/data/raw/stuffle/2026-09-01/toys.html",
+      "diagnostics": {
+        "winning_url": "https://stuffle.com/suche?kategorie=spielzeug",
+        "response_bytes": 767250,
+        "page_title": "Suche \"\" - Second Hand bei Stuffle",
+        "text_preview": "Suche \"\" - Second Hand bei Stuffle Kaufen Verkaufen New In Neu Damen Herren Kinder Zuhause Freizeit Spielzeug Marken Kollektionen ✦ Alle anzeigen Bekleidung Kleider Blusen Shirts & Tops Sweatshirts Strickmode Twin-Sets Jacken Jeans Hosen Westen Mäntel Röcke Jumpsuits Anzüge Kurze Hosen Unterwäsche Bademode Trachtenmode Schwangerschaftsmode Arbeitskleidung Brautmode Nachtwäsche & Loungewear Schuhe Sneaker Sandalen Pumps Stiefeletten Stiefel Halbschuhe Slipper Ballerinas Outdoor Schuhe Pantoletten Hausschuhe Badeschuh Taschen Handtaschen Business- & Laptoptaschen Handytaschen Bauchtaschen Rucksäcke Kosmetiktaschen Geldbörsen & Etuis Reisetaschen & Koffer Accessoires Sonnenbrillen Hüte & Mützen Schals Gürtel Handschuhe Schlüsselanhänger Brillen Sport Bekleidung Sportschuhe Sporttaschen Schmuc",
+        "detected_platform": "unknown"
+      }
+    },
+    "sellpy": {
+      "site": "sellpy",
+      "fetched_at": "2026-09-01T07:51:55+00:00",
+      "status": "ok",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": null,
+      "raw_cache_path": "/home/runner/work/NIGHTINGALE/NIGHTINGALE/data/raw/sellpy/2026-09-01/toys.html",
+      "diagnostics": {
+        "winning_url": "https://www.sellpy.com/c/kids/toys",
+        "response_bytes": 5279,
+        "page_title": null,
+        "text_preview": null,
+        "detected_platform": "unknown"
+      }
+    },
+    "tildi": {
+      "site": "tildi",
+      "fetched_at": "2026-09-01T07:52:03+00:00",
+      "status": "blocked",
+      "total_listings": null,
+      "categories": {},
+      "brands_top10": [],
+      "price_buckets_eur": {},
+      "conditions": {},
+      "sample_listings": [],
+      "error": "HTTP 403; tried 6 URL(s), last: https://tildi.com/sitemap.xml",
+      "raw_cache_path": null,
+      "diagnostics": {}
+    }
+  }
+}
